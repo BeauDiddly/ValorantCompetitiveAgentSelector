@@ -1,0 +1,22 @@
+{
+  "name": "valorantcompetitiveagentselector",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.3"
+  },
+  "dependencies": {
+    "@lemonadejs/html-to-json": "^1.0.0",
+    "cloudflare": "^5.2.0",
+    "dotenv": "^17.3.1",
+    "html-to-json": "^0.6.0"
+  }
+}
