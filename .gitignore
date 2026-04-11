@@ -1,4 +1,7 @@
-node_modules
+node_modules/
 .env
-src/*.js
-src/*.js.map
+dist/  # If you have a build output folder
+*.js
+*.js.map
+*.d.ts  # If generated
+.vscode/

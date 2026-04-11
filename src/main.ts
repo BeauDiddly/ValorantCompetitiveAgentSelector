@@ -1,4 +1,4 @@
-﻿import Cloudflare from "cloudflare";
+﻿import puppeteer from 'puppeteer';
 import dotenv from 'dotenv';
 import readline from 'readline';
 
@@ -73,29 +73,21 @@ function extractWinningMapComps(htmlContent: string, targetMap?: string): Array<
     return results;
 }
 
-async function fetchMatchHtml(client: Cloudflare, url: string): Promise<string> {
-    const response = await client.browserRendering.content.create({
-        account_id: process.env["CLOUDFLARE_ACCOUNT_ID"]!,
-        url,
-    });
-
-    return typeof response === 'string' ? response : JSON.stringify(response);
+async function fetchMatchHtml(url: string): Promise<string> {
+    const browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+    await page.goto(url, { waitUntil: 'networkidle2' });
+    const content = await page.content();
+    await browser.close();
+    return content;
 }
 
 async function main() {
-    const client = new Cloudflare({
-        apiToken: process.env["CLOUDFLARE_API_TOKEN"],
-    });
+    console.log("Fetching match results...");
 
-    console.log("API Token:", process.env.CLOUDFLARE_API_TOKEN ? "✓ Set" : "✗ Missing");
-    console.log("Account ID:", process.env.CLOUDFLARE_ACCOUNT_ID ? "✓ Set" : "✗ Missing");
+    const response = await fetchMatchHtml("https://www.vlr.gg/matches/results");
 
-    const response = await client.browserRendering.content.create({
-        account_id: process.env["CLOUDFLARE_ACCOUNT_ID"]!,
-        url: "https://www.vlr.gg/matches/results"
-    });
-
-    const htmlContent = typeof response === 'string' ? response : JSON.stringify(response);
+    const htmlContent = response;
     const matchUrls = await extractMatchUrls(htmlContent);
 
     const targetMap = process.argv[2] ? process.argv[2].trim() : await promptForInput('Enter map name: ');
@@ -109,7 +101,7 @@ async function main() {
     let found = false;
     for (const matchUrl of matchUrls) {
         console.log(`\nFetching match page ${matchUrl}`);
-        const matchHtml = await fetchMatchHtml(client, matchUrl);
+        const matchHtml = await fetchMatchHtml(matchUrl);
         const mapComps = extractWinningMapComps(matchHtml, targetMap);
         if (mapComps.length > 0) {
             console.log(`Found ${targetMap} in ${matchUrl}`);
