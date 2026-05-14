@@ -4,9 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
     "build": "tsc",
-    "preview": "vite preview"
+    "start": "node dist/main.js"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

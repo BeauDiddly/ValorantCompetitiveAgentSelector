@@ -96,16 +96,18 @@ async function main() {
         const matchUrls = await extractMatchUrls(resultsHtml);
 
         const storedUrls = getStoredMatchUrls(db);
-        const newUrls = matchUrls.filter(url => !storedUrls.has(url));
+        const newEntries = matchUrls
+            .map((url, idx) => ({ url, idx }))
+            .filter(({ url }) => !storedUrls.has(url));
 
-        if (newUrls.length > 0) {
-            console.log(`Caching ${newUrls.length} new matches (${storedUrls.size} already stored)...`);
+        if (newEntries.length > 0) {
+            console.log(`Caching ${newEntries.length} new matches (${storedUrls.size} already stored)...`);
             const limit = pLimit(3);
-            await Promise.all(newUrls.map(url => limit(async () => {
+            await Promise.all(newEntries.map(({ url, idx }) => limit(async () => {
                 console.log(`  Fetching: ${url}`);
                 const html = await fetchMatchHtml(url, browser);
                 const comps = extractWinningMapComps(html);
-                storeMatch(db, url, comps);
+                storeMatch(db, url, comps, idx);
             })));
             console.log("Done caching.");
         } else {
@@ -119,12 +121,11 @@ async function main() {
         }
 
         console.log(`\nSearching database for map: ${targetMap}`);
-        const results = findMapComps(db, targetMap);
-
-        if (results.length > 0) {
-            console.log(JSON.stringify(results, null, 2));
-        } else {
-            console.log(`No map named "${targetMap}" found in cached data.`);
+        try {
+            const result = findMapComps(db, targetMap);
+            console.log(JSON.stringify(result, null, 2));
+        } catch (err) {
+            console.log((err as Error).message);
         }
     } finally {
         await browser.close();
