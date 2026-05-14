@@ -1,6 +1,9 @@
-﻿import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer';
+import type { Browser } from 'puppeteer';
 import dotenv from 'dotenv';
 import readline from 'readline';
+import pLimit from 'p-limit';
+import { openDb, getStoredMatchUrls, storeMatch, findMapComps } from './database.js';
 
 dotenv.config();
 
@@ -73,46 +76,59 @@ function extractWinningMapComps(htmlContent: string, targetMap?: string): Array<
     return results;
 }
 
-async function fetchMatchHtml(url: string): Promise<string> {
-    const browser = await puppeteer.launch({ headless: true });
+async function fetchMatchHtml(url: string, browser: Browser): Promise<string> {
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle2' });
-    const content = await page.content();
-    await browser.close();
-    return content;
+    try {
+        await page.goto(url, { waitUntil: 'networkidle2' });
+        return await page.content();
+    } finally {
+        await page.close();
+    }
 }
 
 async function main() {
-    console.log("Fetching match results...");
+    const db = openDb();
+    const browser = await puppeteer.launch({ headless: true });
 
-    const response = await fetchMatchHtml("https://www.vlr.gg/matches/results");
+    try {
+        console.log("Fetching match results page...");
+        const resultsHtml = await fetchMatchHtml("https://www.vlr.gg/matches/results", browser);
+        const matchUrls = await extractMatchUrls(resultsHtml);
 
-    const htmlContent = response;
-    const matchUrls = await extractMatchUrls(htmlContent);
+        const storedUrls = getStoredMatchUrls(db);
+        const newUrls = matchUrls.filter(url => !storedUrls.has(url));
 
-    const targetMap = process.argv[2] ? process.argv[2].trim() : await promptForInput('Enter map name: ');
-    if (!targetMap) {
-        console.error('No map name provided.');
-        return;
-    }
-
-    console.log(`\nSearching for map: ${targetMap}`);
-
-    let found = false;
-    for (const matchUrl of matchUrls) {
-        console.log(`\nFetching match page ${matchUrl}`);
-        const matchHtml = await fetchMatchHtml(matchUrl);
-        const mapComps = extractWinningMapComps(matchHtml, targetMap);
-        if (mapComps.length > 0) {
-            console.log(`Found ${targetMap} in ${matchUrl}`);
-            console.log(JSON.stringify(mapComps, null, 2));
-            found = true;
-            break;
+        if (newUrls.length > 0) {
+            console.log(`Caching ${newUrls.length} new matches (${storedUrls.size} already stored)...`);
+            const limit = pLimit(3);
+            await Promise.all(newUrls.map(url => limit(async () => {
+                console.log(`  Fetching: ${url}`);
+                const html = await fetchMatchHtml(url, browser);
+                const comps = extractWinningMapComps(html);
+                storeMatch(db, url, comps);
+            })));
+            console.log("Done caching.");
+        } else {
+            console.log(`All ${storedUrls.size} matches already cached.`);
         }
-    }
 
-    if (!found) {
-        console.log(`No map named "${targetMap}" was found in the fetched match pages.`);
+        const targetMap = process.argv[2] ? process.argv[2].trim() : await promptForInput('\nEnter map name: ');
+        if (!targetMap) {
+            console.error('No map name provided.');
+            return;
+        }
+
+        console.log(`\nSearching database for map: ${targetMap}`);
+        const results = findMapComps(db, targetMap);
+
+        if (results.length > 0) {
+            console.log(JSON.stringify(results, null, 2));
+        } else {
+            console.log(`No map named "${targetMap}" found in cached data.`);
+        }
+    } finally {
+        await browser.close();
+        db.close();
     }
 }
 
